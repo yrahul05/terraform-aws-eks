@@ -1,35 +1,42 @@
 name: tfsec
+
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
   pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
 
 jobs:
   tfsec:
-    name: tfsec sarif report
     runs-on: ubuntu-latest
 
     steps:
-      - name: Clone repo
-        uses: actions/checkout@main
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - name: tfsec
-        uses: aquasecurity/tfsec-sarif-action@v0.1.4
+      - name: Run tfsec using Docker
+        run: |
+          docker run --rm \
+            --user $(id -u):$(id -g) \
+            -v "$(pwd)":/src \
+            aquasec/tfsec:latest \
+            /src \
+            --soft-fail \
+            --format sarif \
+            --out /src/tfsec.sarif
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: github.event.pull_request.head.repo.fork == false
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: tfsec.sarif
-          full_repo_scan: true
 
       - name: tfsec commenter for PR
+        if: github.event_name == 'pull_request'
         uses: tfsec/tfsec-pr-commenter-action@v1.3.1
         with:
           GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Terraform security scan Advanced
-        uses: triat/terraform-security-scan@v3.1.0
-        if: github.event_name == 'pull_request'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          tfsec_actions_comment: true
-          tfsec_output_format: sarif
-        continue-on-error: true
